@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional, Tuple, Type, Union, cast
+from typing import Any, cast
 
 import pydantic
 from trulens.core.utils import imports as import_utils
@@ -18,7 +18,7 @@ with import_utils.OptionalImports(
 
 logger = logging.getLogger(__name__)
 
-_SchemaType = Union[Dict[str, Any], Type[pydantic.BaseModel]]
+_SchemaType = dict[str, Any] | type[pydantic.BaseModel]
 
 
 class SchemaValidator(pyschema_utils.WithClassInfo, serial_utils.SerialModel):
@@ -73,30 +73,32 @@ class SchemaValidator(pyschema_utils.WithClassInfo, serial_utils.SerialModel):
         super().__init__(**kwargs)
         if not (
             isinstance(schema, dict)
-            or (isinstance(schema, type) and issubclass(schema, pydantic.BaseModel))
+            or (
+                isinstance(schema, type)
+                and issubclass(schema, pydantic.BaseModel)
+            )
         ):
             raise TypeError(
                 "`schema` must be a JSON schema dict or a Pydantic BaseModel class."
             )
         self._schema = schema
 
-
-    def _validate_with_jsonschema(
-        self, data: Any
-    ) -> Tuple[bool, Optional[str]]:
+    def _validate_with_jsonschema(self, data: Any) -> tuple[bool, str | None]:
         _jsonschema_opt.assert_installed(jsonschema)
         try:
-            jsonschema.validate(instance=data, schema=cast(Dict[str, Any], self._schema))
+            jsonschema.validate(
+                instance=data, schema=cast(dict[str, Any], self._schema)
+            )
             return True, None
         except jsonschema.ValidationError as exc:
             return False, exc.message
         except jsonschema.SchemaError as exc:
-            raise ValueError(f"Invalid JSON schema provided: {exc.message}") from exc
+            raise ValueError(
+                f"Invalid JSON schema provided: {exc.message}"
+            ) from exc
 
-    def _validate_with_pydantic(
-        self, data: Any
-    ) -> Tuple[bool, Optional[str]]:
-        model_cls = cast(Type[pydantic.BaseModel], self._schema)
+    def _validate_with_pydantic(self, data: Any) -> tuple[bool, str | None]:
+        model_cls = cast(type[pydantic.BaseModel], self._schema)
         try:
             model_cls.model_validate(data)
             return True, None
@@ -107,9 +109,7 @@ class SchemaValidator(pyschema_utils.WithClassInfo, serial_utils.SerialModel):
             )
             return False, errors
 
-    def _parse_and_validate(
-        self, output: str
-    ) -> Tuple[float, Dict[str, str]]:
+    def _parse_and_validate(self, output: str) -> tuple[float, dict[str, str]]:
         """Parse *output* as JSON and validate against the stored schema.
 
         Returns:
@@ -131,9 +131,7 @@ class SchemaValidator(pyschema_utils.WithClassInfo, serial_utils.SerialModel):
             return 1.0, {"explanation": "Output conforms to the schema."}
         return 0.0, {"explanation": f"Schema validation failed: {error_msg}"}
 
-    def validate_json(
-        self, output: str
-    ) -> Tuple[float, Dict[str, str]]:
+    def validate_json(self, output: str) -> tuple[float, dict[str, str]]:
         """Validate that *output* is valid JSON conforming to the schema.
 
         Returns ``1.0`` when valid, ``0.0`` otherwise.  The accompanying
@@ -150,8 +148,8 @@ class SchemaValidator(pyschema_utils.WithClassInfo, serial_utils.SerialModel):
         return self._parse_and_validate(output)
 
     def validate_json_partial(
-        self, output: str, required_keys: Optional[list] = None
-    ) -> Tuple[float, Dict[str, str]]:
+        self, output: str, required_keys: list | None = None
+    ) -> tuple[float, dict[str, str]]:
         """Validate that *output* is valid JSON and optionally check for keys.
 
         This is a lighter-weight check: it verifies that *output* parses as a
@@ -180,8 +178,11 @@ class SchemaValidator(pyschema_utils.WithClassInfo, serial_utils.SerialModel):
         if required_keys:
             missing = [k for k in required_keys if k not in data]
             if missing:
-                return 0.0, {
-                    "explanation": f"Missing required keys: {missing}"
-                }
+                return 0.0, {"explanation": f"Missing required keys: {missing}"}
 
-        return 1.0, {"explanation": "Output is a valid JSON object with all required keys."}
+        return (
+            1.0,
+            {
+                "explanation": "Output is a valid JSON object with all required keys."
+            },
+        )
